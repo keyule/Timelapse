@@ -2718,7 +2718,8 @@ static void mapRush(int destMapID) {
 	Assembly::spawnControl = new std::vector<SpawnControlData*>(); //Create a new spawn control list for map rushing
 	Jump(spawnPointAddr, Assembly::SpawnPointHook, 0); //Enable spawn control 
 
-	for (auto i = mapPath->begin(); i != mapPath->end(); ++i) {
+	int j = 1;
+	for (auto i = mapPath->begin(); i != mapPath->end(); ++i, j++) {
 		MapPath^ mapData = *i;
 		PortalData^ foundPortal = findPortal(mapData->portal->toMapID); //Find portal in mem in case wz files are different in private server
 		if (foundPortal != nullptr) mapData->portal = foundPortal;
@@ -2729,7 +2730,7 @@ static void mapRush(int destMapID) {
 			if (oldChannel == 1) AutoCC(2); else AutoCC(1);
 			Sleep(delay);
 		}
-
+		
 		//Add next map's spawn point to spawnControl
 		if((i+1) != mapPath->end()) Assembly::spawnControl->push_back(new SpawnControlData((*(i+1))->mapID, (*(i+1))->portal->xPos, (*(i+1))->portal->yPos - 10));
 
@@ -2737,13 +2738,13 @@ static void mapRush(int destMapID) {
 		String^ packet = "";
 		if (mapData->portal->portalType == 7) {
 			writeBytes(packet, gcnew array<BYTE>{0x64, 0x00}); //Change Map Special OpCode
-			writeByte(packet, 0); // 0 = Change Map through Regular Portals, 1 = Change Map From Dying
+			writeByte(packet, j); // For MapleRoyal, this packet increase by 1 for every portal and resets on CC
 			writeString(packet, mapData->portal->portalName); // Portal Name
 			writeShort(packet, (short)mapData->portal->xPos); //Portal x Position
 			writeShort(packet, (short)mapData->portal->yPos); //Portal y Position
 		} else {
 			writeBytes(packet, gcnew array<BYTE>{0x26, 0x00}); //Change Map OpCode
-			writeByte(packet, 0); // 0 = Change Map through Regular Portals, 1 = Change Map From Dying
+			writeByte(packet, j); // For MapleRoyal, this packet increase by 1 for every portal and resets on back to 1 CC
 			writeInt(packet, -1); // Target Map ID, only not -1 when character is dead, a GM, or for certain maps like Aran Introduction, Intro Map, Adventurer Intro, etc.
 			writeString(packet, mapData->portal->portalName); // Portal Name
 			writeShort(packet, (short)mapData->portal->xPos); //Portal x Position
@@ -2754,21 +2755,13 @@ static void mapRush(int destMapID) {
 
 		//Spawn in next map
 		SendPacket(packet);
-
-		for(int n = 0; n < 50; n++) {
+		//Check to see if next map is loaded, try max 10 attempts;
+		for(int n = 0; n < 10; n++) {
 			Sleep(delay);
 			if (ReadPointer(UIMiniMapBase, OFS_MapID) != mapData->mapID) break;
 			SendPacket(packet);
 			if (n % 3 == 0) Teleport(mapData->portal->xPos, mapData->portal->yPos - 20);
 		}
-
-		//Check to see if next map is loaded, try max 20 attempts
-		/*for(int n = 0; n < 50; n++) {
-			Sleep(25);
-			if (ReadPointer(UIMiniMapBase, OFS_MapID) != mapData->mapID) break;
-			if (n % 5 == 0) SendPacket(packet);
-			if (n == 20) Teleport(mapData->portal->xPos, mapData->portal->yPos - 20);
-		}*/
 		
 		remainingMapCount--;
 		MainForm::TheInstance->lbMapRusherStatus->Text = "Status: Map Rushing, Remaining Maps: " + Convert::ToString(remainingMapCount);
